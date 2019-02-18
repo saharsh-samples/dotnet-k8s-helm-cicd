@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sample-dotnet-app.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
+    helm.sh/chart: {{ include "sample-dotnet-app.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: VALUES_SERVICE_TYPE
+              value: "{{ .Values.env.valuesServiceType }}"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: app-config
+          secret:
+            secretName: {{ .Values.secret.name }}
+            items:
+            - key: appusers.json
+              path: appusers.json

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: sample-dotnet-app
+  name: sample-dotnet-app
+  namespace: "$APP_NAMESPACE"
+spec:
+  ports:
+  - targetPort: 8080
+    port: 8080
+    protocol: TCP
+  selector:
+    app: sample-dotnet-app
+  type: NodePort

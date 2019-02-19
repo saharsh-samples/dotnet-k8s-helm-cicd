@@ -103,7 +103,7 @@ spec:
 
             steps {
 
-                // Deploy using helm install
+                // Deploy to K8s using helm install
                 container('helm') {
 
                     withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {

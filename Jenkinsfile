@@ -1,13 +1,29 @@
+String getBranchName() {
+    def branch = env.GIT_BRANCH
+
+    if (branch.startsWith("origin/")) {
+        branch = branch.replace("origin/", "")
+    }
+
+    return branch
+}
+
 pipeline {
 
     // define environment
     environment {
+
+        branch = "${getBranchName()}"
+
         imageRepo = "saharshsingh/sample-dotnet-app"
-        imageTag = "${new java.text.SimpleDateFormat('yyyyMMdd-HHmmss').format(new java.util.Date())}"
+        imageTag = "${branch}"
 
         ocpClusterUrl = "https://192.168.99.100:8443"
         tillerNS = "tiller"
-        appNS = "sample-projects"
+
+        appDevelopmentNS = "sample-projects-dev"
+        appQaNS = "sample-projects-qa"
+        appProductionNS = "sample-projects-dev"
     }
 
     // no default agent/pod to stand up
@@ -60,16 +76,18 @@ spec:
 
                 // build container image
                 container('dind') {
-                    
-                    withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                        sh '''
-                        IMAGE="${imageRepo}:${imageTag}"
 
-                        echo "$PASS" | docker login --username "$USER" --password-stdin
+                    sh 'docker build -t "${imageRepo}:${imageTag}" sample-dotnet-app'
 
-                        docker build -t $IMAGE sample-dotnet-app
-                        docker push $IMAGE
-                        '''
+                    script {
+                        if("master".equals(branch) || "develop".equals(branch)) {
+                            withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                                sh '''
+                                echo "$PASS" | docker login --username "$USER" --password-stdin
+                                docker push "${imageRepo}:${imageTag}"
+                                '''
+                            }
+                        }
                     }
                 }
             }

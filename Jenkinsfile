@@ -77,6 +77,8 @@ spec:
 
         stage('Deploy') {
 
+            when { anyOf { branch 'master'; branch 'develop' } }
+
             // 'Deploy' agent pod template
             agent {
                 kubernetes {

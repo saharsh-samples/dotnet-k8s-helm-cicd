@@ -10,6 +10,20 @@ String getBranchName() {
 
 pipeline {
 
+    environment {
+
+        version = "${readFile 'version.txt'}"
+
+        imageRepo = "saharshsingh/sample-dotnet-app"
+
+        ocpClusterUrl = "https://192.168.99.100:8443"
+        tillerNS = "tiller"
+
+        appDevelopmentNS = "sample-projects-dev"
+        appQaNS = "sample-projects-qa"
+        appProductionNS = "sample-projects-dev"
+    }
+
     // no default agent/pod to stand up
     agent none 
 
@@ -20,11 +34,8 @@ pipeline {
 
             // define environment
             environment {
-
                 branch = "${getBranchName()}"
-
-                imageRepo = "saharshsingh/sample-dotnet-app"
-                imageTag = "${branch}"
+                imageTag = "${version + '-' + branch}"
             }
 
             // 'Build and deliver' agent pod template
@@ -93,18 +104,8 @@ spec:
 
             // define environment
             environment {
-
                 branch = "getBranchName()"
-
-                imageRepo = "saharshsingh/sample-dotnet-app"
-                imageTag = "${branch}"
-
-                ocpClusterUrl = "https://192.168.99.100:8443"
-                tillerNS = "tiller"
-
-                appDevelopmentNS = "sample-projects-dev"
-                appQaNS = "sample-projects-qa"
-                appProductionNS = "sample-projects-dev"
+                imageTag = "${version + '-' + branch}"
             }
 
             // 'Deploy' agent pod template
@@ -136,6 +137,7 @@ spec:
 
                     withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
                         sh '''
+
                         export HOME="`pwd`"
                         export TILLER_NAMESPACE=${tillerNS}
 

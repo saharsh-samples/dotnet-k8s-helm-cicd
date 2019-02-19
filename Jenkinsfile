@@ -10,22 +10,6 @@ String getBranchName() {
 
 pipeline {
 
-    // define environment
-    environment {
-
-        branch = "${getBranchName()}"
-
-        imageRepo = "saharshsingh/sample-dotnet-app"
-        imageTag = "${branch}"
-
-        ocpClusterUrl = "https://192.168.99.100:8443"
-        tillerNS = "tiller"
-
-        appDevelopmentNS = "sample-projects-dev"
-        appQaNS = "sample-projects-qa"
-        appProductionNS = "sample-projects-dev"
-    }
-
     // no default agent/pod to stand up
     agent none 
 
@@ -33,6 +17,15 @@ pipeline {
 
         // Build and deliver application container image
         stage('Build and deliver container image') {
+
+            // define environment
+            environment {
+
+                branch = "${getBranchName()}"
+
+                imageRepo = "saharshsingh/sample-dotnet-app"
+                imageTag = "${branch}"
+            }
 
             // 'Build and deliver' agent pod template
             agent {
@@ -77,9 +70,10 @@ spec:
                 // build container image
                 container('dind') {
 
-                    sh 'docker build -t "${imageRepo}:${imageTag}" sample-dotnet-app'
-
                     script {
+
+                        sh 'docker build -t "${imageRepo}:${imageTag}" sample-dotnet-app'
+
                         if("master".equals(branch) || "develop".equals(branch)) {
                             withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                                 sh '''
@@ -96,6 +90,22 @@ spec:
         stage('Deploy') {
 
             when { anyOf { branch 'master'; branch 'develop' } }
+
+            // define environment
+            environment {
+
+                branch = "getBranchName()"
+
+                imageRepo = "saharshsingh/sample-dotnet-app"
+                imageTag = "${branch}"
+
+                ocpClusterUrl = "https://192.168.99.100:8443"
+                tillerNS = "tiller"
+
+                appDevelopmentNS = "sample-projects-dev"
+                appQaNS = "sample-projects-qa"
+                appProductionNS = "sample-projects-dev"
+            }
 
             // 'Deploy' agent pod template
             agent {

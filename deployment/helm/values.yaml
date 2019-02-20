@@ -10,11 +10,8 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: NodePort
+  type: ClusterIP
   port: 8080
-
-secret:
-  name: sample-dotnet-app-config
 
 env:
   valuesServiceType: simple

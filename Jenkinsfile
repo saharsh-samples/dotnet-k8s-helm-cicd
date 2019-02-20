@@ -1,13 +1,35 @@
+String getBranchName() {
+    def branch = env.GIT_BRANCH
+
+    if (branch.startsWith("origin/")) {
+        branch = branch.replace("origin/", "")
+    }
+
+    return branch
+}
+
+String getBuildVersion() {
+    def version = readFile 'version.txt'
+    def branchName = getBranchName()
+    
+    if(!"master".equals(branchName)) {
+        version = version + '-' + branchName
+    }
+    return version
+}
+
 pipeline {
 
-    // define environment
     environment {
+
         imageRepo = "saharshsingh/sample-dotnet-app"
-        imageTag = "${new java.text.SimpleDateFormat('yyyyMMdd-HHmmss').format(new java.util.Date())}"
 
         ocpClusterUrl = "https://192.168.99.100:8443"
         tillerNS = "tiller"
-        appNS = "sample-projects"
+
+        appDevelopmentNS = "sample-projects-dev"
+        appQaNS = "sample-projects-qa"
+        appProductionNS = "sample-projects-dev"
     }
 
     // no default agent/pod to stand up
@@ -17,6 +39,12 @@ pipeline {
 
         // Build and deliver application container image
         stage('Build and deliver container image') {
+
+            // define environment
+            environment {
+                branch = "${getBranchName()}"
+                imageTag = "${getBuildVersion()}"
+            }
 
             // 'Build and deliver' agent pod template
             agent {
@@ -60,22 +88,32 @@ spec:
 
                 // build container image
                 container('dind') {
-                    
-                    withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                        sh '''
-                        IMAGE="${imageRepo}:${imageTag}"
 
-                        echo "$PASS" | docker login --username "$USER" --password-stdin
+                    script {
 
-                        docker build -t $IMAGE sample-dotnet-app
-                        docker push $IMAGE
-                        '''
+                        sh 'docker build -t "${imageRepo}:${imageTag}" sample-dotnet-app'
+
+                        if("master".equals(branch) || "develop".equals(branch)) {
+                            withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                                sh '''
+                                echo "$PASS" | docker login --username "$USER" --password-stdin
+                                docker push "${imageRepo}:${imageTag}"
+                                '''
+                            }
+                        }
                     }
                 }
             }
         }
 
         stage('Deploy') {
+
+            when { anyOf { branch 'master'; branch 'develop' } }
+
+            // define environment
+            environment {
+                imageTag = "${getBuildVersion()}"
+            }
 
             // 'Deploy' agent pod template
             agent {
@@ -101,11 +139,12 @@ spec:
 
             steps {
 
-                // Deploy using helm install
+                // Deploy to K8s using helm install
                 container('helm') {
 
                     withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
                         sh '''
+
                         export HOME="`pwd`"
                         export TILLER_NAMESPACE=${tillerNS}
 

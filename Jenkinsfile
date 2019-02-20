@@ -8,11 +8,19 @@ String getBranchName() {
     return branch
 }
 
+String getBuildVersion() {
+    def version = readFile 'version.txt'
+    def branchName = getBranchName()
+    
+    if(!"master".equals(branchName)) {
+        version = version + '-' + branchName
+    }
+    return version
+}
+
 pipeline {
 
     environment {
-
-        version = "${readFile 'version.txt'}"
 
         imageRepo = "saharshsingh/sample-dotnet-app"
 
@@ -35,7 +43,7 @@ pipeline {
             // define environment
             environment {
                 branch = "${getBranchName()}"
-                imageTag = "${version + '-' + branch}"
+                imageTag = "${getBuildVersion()}"
             }
 
             // 'Build and deliver' agent pod template
@@ -104,8 +112,7 @@ spec:
 
             // define environment
             environment {
-                branch = "getBranchName()"
-                imageTag = "${version + '-' + branch}"
+                imageTag = "${getBuildVersion()}"
             }
 
             // 'Deploy' agent pod template

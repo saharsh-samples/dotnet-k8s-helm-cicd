@@ -43,7 +43,7 @@ spec:
       volumes:
         - name: app-config
           secret:
-            secretName: {{ .Values.secret.name }}
+            secretName: {{ .Release.Name }}-config
             items:
             - key: appusers.json
               path: appusers.json

@@ -13,8 +13,5 @@ service:
   type: ClusterIP
   port: 8080
 
-secret:
-  name: sample-dotnet-app-config
-
 env:
   valuesServiceType: simple

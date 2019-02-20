@@ -162,11 +162,11 @@ spec:
                         kubectl config set-context helm --cluster=development --namespace="${tillerNS}" --user=jenkins
                         kubectl config use-context helm
 
-                        helm install \
-                            --name sample-dotnet-app \
+                        helm upgrade --install \
                             --namespace "${namespace}" \
                             --set image.repository="${imageRepo}" \
                             --set image.tag="${imageTag}" \
+                            sample-dotnet-app \
                             deployment/helm
                         '''
                     }

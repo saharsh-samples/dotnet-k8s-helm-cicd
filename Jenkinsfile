@@ -1,23 +1,3 @@
-String getBranchName() {
-    def branch = env.GIT_BRANCH
-
-    if (branch.startsWith("origin/")) {
-        branch = branch.replace("origin/", "")
-    }
-
-    return branch
-}
-
-String getBuildVersion() {
-    def version = readFile 'version.txt'
-    def branchName = getBranchName()
-    
-    if(!"master".equals(branchName)) {
-        version = version + '-' + branchName
-    }
-    return version
-}
-
 pipeline {
 
     environment {
@@ -27,9 +7,10 @@ pipeline {
         ocpClusterUrl = "https://192.168.99.100:8443"
         tillerNS = "tiller"
 
-        appDevelopmentNS = "sample-projects-dev"
-        appQaNS = "sample-projects-qa"
-        appProductionNS = "sample-projects-dev"
+        appName = "sample-dotnet-app"
+        productionNamespace = "sample-projects"
+        qaNamespace = "${productionNamespace + '-qa'}"
+        developmentNamespace = "${productionNamespace + '-dev'}"
     }
 
     // no default agent/pod to stand up
@@ -39,12 +20,6 @@ pipeline {
 
         // Build and deliver application container image
         stage('Build and deliver container image') {
-
-            // define environment
-            environment {
-                branch = "${getBranchName()}"
-                imageTag = "${getBuildVersion()}"
-            }
 
             // 'Build and deliver' agent pod template
             agent {
@@ -81,9 +56,18 @@ spec:
 
             steps {
 
+                // set build version from version.txt file and current branch
+                script {
+                    def version = readFile 'version.txt'
+                    if(!"master".equals(BRANCH_NAME)) {
+                        version = version + '-' + BRANCH_NAME
+                    }
+                    env.buildVersion = version
+                }
+
                 // build dotnet binaries
                 container('dotnet') {
-                    sh 'dotnet publish -c Release -o out sample-dotnet-app'
+                    sh 'dotnet publish -c Release -o out ${appName}'
                 }
 
                 // build container image
@@ -91,13 +75,13 @@ spec:
 
                     script {
 
-                        sh 'docker build -t "${imageRepo}:${imageTag}" sample-dotnet-app'
+                        sh 'docker build -t "${imageRepo}:${buildVersion}" ${appName}'
 
-                        if("master".equals(branch) || "develop".equals(branch)) {
+                        if("master".equals(BRANCH_NAME) || "develop".equals(BRANCH_NAME)) {
                             withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                                 sh '''
                                 echo "$PASS" | docker login --username "$USER" --password-stdin
-                                docker push "${imageRepo}:${imageTag}"
+                                docker push "${imageRepo}:${buildVersion}"
                                 '''
                             }
                         }
@@ -109,12 +93,6 @@ spec:
         stage('Deploy to Staging') {
 
             when { anyOf { branch 'master'; branch 'develop' } }
-
-            // define environment
-            environment {
-                branch = "${getBranchName()}"
-                imageTag = "${getBuildVersion()}"
-            }
 
             // 'Deploy' agent pod template
             agent {
@@ -144,10 +122,12 @@ spec:
                 container('helm') {
 
                     script {
-                        if("master".equals(branch)) {
-                            env.namespace = env.appQaNS
+                        if("master".equals(BRANCH_NAME)) {
+                            env.namespace = env.qaNamespace
+                            env.helmRelease = env.appName + '-qa'
                         } else {
-                            env.namespace = env.appDevelopmentNS
+                            env.namespace = env.developmentNamespace
+                            env.helmRelease = env.appName + '-dev'
                         }
                     }
 
@@ -165,13 +145,79 @@ spec:
                         helm upgrade --install \
                             --namespace "${namespace}" \
                             --set image.repository="${imageRepo}" \
-                            --set image.tag="${imageTag}" \
-                            sample-dotnet-app \
+                            --set image.tag="${buildVersion}" \
+                            ${helmRelease} \
                             deployment/helm
                         '''
                     }
 
-                    
+                }
+            }
+        }
+
+        stage('Confirm Promotion to Production') {
+
+            when { branch 'master' }
+
+            steps {
+                timeout(time : 5, unit : 'DAYS') {
+                    input "Promote ${imageRepo}:${env.buildVersion} to production?"
+                }
+            }
+
+        }
+
+        stage('Promote to Production') {
+
+            when { branch 'master' }
+
+            // 'Deploy' agent pod template
+            agent {
+                kubernetes {
+                    cloud 'openshift'
+                    label 'helm'
+                    yaml """
+apiVersion: v1
+kind: Pod
+spec:
+    containers:
+      - name: jnlp
+        image: 'jenkinsci/jnlp-slave:alpine'
+      - name: helm
+        image: 'saharshsingh/helm:2.12.3'
+        imagePullPolicy: IfNotPresent
+        command:
+          - /bin/cat
+        tty: true
+"""
+                }
+            }
+
+            steps {
+
+                // Deploy to K8s using helm install
+                container('helm') {
+
+                    withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
+                        sh '''
+
+                        export HOME="`pwd`"
+                        export TILLER_NAMESPACE=${tillerNS}
+
+                        kubectl config set-cluster development --server="${ocpClusterUrl}" --insecure-skip-tls-verify
+                        kubectl config set-credentials jenkins --token="$TOKEN"
+                        kubectl config set-context helm --cluster=development --namespace="${tillerNS}" --user=jenkins
+                        kubectl config use-context helm
+
+                        helm upgrade --install \
+                            --namespace "${productionNamespace}" \
+                            --set image.repository="${imageRepo}" \
+                            --set image.tag="${buildVersion}" \
+                            ${appName} \
+                            deployment/helm
+                        '''
+                    }
+
                 }
             }
         }

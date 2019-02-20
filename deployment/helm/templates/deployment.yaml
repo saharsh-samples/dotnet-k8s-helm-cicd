@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sample-dotnet-app.fullname" . }}
+  name: {{ include "sample-dotnet-app.name" . }}
   labels:
     app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
     helm.sh/chart: {{ include "sample-dotnet-app.chart" . }}
@@ -43,7 +43,7 @@ spec:
       volumes:
         - name: app-config
           secret:
-            secretName: {{ .Release.Name }}-config
+            secretName: {{ include "sample-dotnet-app.name" . }}-config
             items:
             - key: appusers.json
               path: appusers.json

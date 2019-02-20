@@ -106,12 +106,13 @@ spec:
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to Staging') {
 
             when { anyOf { branch 'master'; branch 'develop' } }
 
             // define environment
             environment {
+                branch = "${getBranchName()}"
                 imageTag = "${getBuildVersion()}"
             }
 
@@ -142,6 +143,14 @@ spec:
                 // Deploy to K8s using helm install
                 container('helm') {
 
+                    script {
+                        if("master".equals(branch)) {
+                            env.namespace = env.appQaNS
+                        } else {
+                            env.namespace = env.appDevelopmentNS
+                        }
+                    }
+
                     withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
                         sh '''
 
@@ -155,7 +164,7 @@ spec:
 
                         helm install \
                             --name sample-dotnet-app \
-                            --namespace "${appNS}" \
+                            --namespace "${namespace}" \
                             --set image.repository="${imageRepo}" \
                             --set image.tag="${imageTag}" \
                             deployment/helm

@@ -90,6 +90,44 @@ spec:
             }
         }
 
+        stage('Tag and Increment Version') {
+
+            when { branch 'master' }
+
+            agent any
+
+            steps {
+                withCredentials([usernamePassword(credentialsId:'github-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh '''
+
+                    # Configure Git for tagging/committing and pushing
+                    git config --global user.email "jenkins@email.com"
+                    git config --global user.name "Jenkins"
+                    printf "exec echo \\"${PASS}\\"" > $HOME/askgitpass.sh
+                    chmod a+x $HOME/askgitpass.sh
+
+                    # Tag Release Candidate
+                    git tag -a "v${buildVersion}" -m "Release v${buildVersion} successfully deployed"
+                    GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd "v${buildVersion}"
+
+                    # Determine new version
+                    old_ver=$(cat version.txt)
+                    z_ver=$(echo "$old_ver" | cut -d '.' -f 3)
+                    new_ver="$(echo "$old_ver" | cut -d '.' -f 1,2)".$((z_ver+1))
+
+                    # Increment version on main branch
+                    main_branch="develop"
+                    git checkout $main_branch
+                    git reset --hard origin/$main_branch
+                    printf "$new_ver" > version.txt
+                    git commit -a -m "Updated version from $old_ver to $new_ver"
+                    GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd $main_branch
+                    '''
+                }
+            }
+
+        }
+
         stage('Deploy to Staging') {
 
             when { anyOf { branch 'master'; branch 'develop' } }

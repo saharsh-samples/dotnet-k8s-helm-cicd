@@ -2,14 +2,16 @@ pipeline {
 
     environment {
 
+        appName            = "sample-dotnet-app"
+        helmChartDirectory = "deployment/helm"
+        helmChartFile      = "${helmChartDirectory + '/Chart.yaml'}"
+
         imageRepo = "saharshsingh/sample-dotnet-app"
 
-        ocpClusterUrl = "https://192.168.99.100:8443"
-        tillerNS = "tiller"
-
-        appName = "sample-dotnet-app"
-        productionNamespace = "sample-projects"
-        qaNamespace = "${productionNamespace + '-qa'}"
+        ocpClusterUrl        = "https://192.168.99.100:8443"
+        tillerNS             = "tiller"
+        productionNamespace  = "sample-projects"
+        qaNamespace          = "${productionNamespace + '-qa'}"
         developmentNamespace = "${productionNamespace + '-dev'}"
     }
 
@@ -17,6 +19,27 @@ pipeline {
     agent none 
 
     stages {
+
+        stage('Initialize') {
+
+            agent any
+
+            steps {
+
+                // set build version from helm chart and current branch
+                script {
+                    readFile(helmChartFile).split('\r|\n').eachWithIndex({ line, count ->
+                        if(line.trim().startsWith("version")) {
+                            def version = line.replaceFirst(".*version.*(\\d+\\.\\d+\\.\\d+).*", "\$1")
+                            if(!"master".equals(BRANCH_NAME)) {
+                                version = version + '-' + BRANCH_NAME
+                            }
+                            env.buildVersion = version
+                        }
+                    })
+                }
+            }
+        }
 
         // Build and deliver application container image
         stage('Build and deliver container image') {
@@ -55,15 +78,6 @@ spec:
             }
 
             steps {
-
-                // set build version from version.txt file and current branch
-                script {
-                    def version = readFile 'version.txt'
-                    if(!"master".equals(BRANCH_NAME)) {
-                        version = version + '-' + BRANCH_NAME
-                    }
-                    env.buildVersion = version
-                }
 
                 // build dotnet binaries
                 container('dotnet') {
@@ -110,17 +124,15 @@ spec:
                     git tag -a "v${buildVersion}" -m "Release v${buildVersion} successfully deployed"
                     GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd "v${buildVersion}"
 
-                    # Determine new version
-                    old_ver=$(cat version.txt)
-                    z_ver=$(echo "$old_ver" | cut -d '.' -f 3)
-                    new_ver="$(echo "$old_ver" | cut -d '.' -f 1,2)".$((z_ver+1))
-
                     # Increment version on main branch
                     main_branch="develop"
                     git checkout $main_branch
                     git reset --hard origin/$main_branch
-                    printf "$new_ver" > version.txt
-                    git commit -a -m "Updated version from $old_ver to $new_ver"
+
+                    new_version="$(echo "${buildVersion}" | cut -d '.' -f 1,2).$(($(echo "${buildVersion}" | cut -d '.' -f 3) + 1))"
+                    sed -i -E s/"version.*[0-9]+\\.[0-9]+\\.[0-9]+"/"version: $new_version"/ ${helmChartFile}
+
+                    git commit -a -m "Updated version from ${buildVersion} to $new_version"
                     GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd $main_branch
                     '''
                 }
@@ -185,7 +197,7 @@ spec:
                             --set image.repository="${imageRepo}" \
                             --set image.tag="${buildVersion}" \
                             ${helmRelease} \
-                            deployment/helm
+                            ${helmChartDirectory}
                         '''
                     }
 
@@ -252,7 +264,7 @@ spec:
                             --set image.repository="${imageRepo}" \
                             --set image.tag="${buildVersion}" \
                             ${appName} \
-                            deployment/helm
+                            ${helmChartDirectory}
                         '''
                     }
 

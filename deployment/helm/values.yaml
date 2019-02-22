@@ -4,8 +4,11 @@
 
 replicaCount: 1
 
+app:
+  version: changeme
+
 image:
-  repository: 192.168.99.1:5000/resideo/sample-dotnet-app
+  repository: saharshsingh/sample-dotnet-app
   tag: latest
   pullPolicy: IfNotPresent
 

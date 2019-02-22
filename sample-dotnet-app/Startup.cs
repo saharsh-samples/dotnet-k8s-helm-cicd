@@ -33,6 +33,13 @@ namespace sample_dotnet_app
             services.Configure<List<AppUser>>(Configuration.GetSection("AppUsers"));
             services.AddSingleton<BasicAuthenticationFilter>();
 
+            var appMetadata = new AppMetadata {
+                Name = Configuration.GetValue<string>("APP_NAME", "sample-dotnet-app"),
+                Description = Configuration.GetValue<string>("APP_DESCRIPTION", "A sample ASP.NET 2.2 Web API application"),
+                Version = Configuration.GetValue<string>("APP_VERSION", "set APP_VERSION in env to override")
+            };
+            services.AddSingleton(appMetadata);
+
             string valuesServiceType = Configuration.GetSection("VALUES_SERVICE_TYPE").Get<string>();
             if(valuesServiceType == "simple") {
                 services.AddSingleton<IValuesService, SimpleValuesService>();

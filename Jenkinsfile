@@ -1,3 +1,23 @@
+def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, imageRepo, imageTag, releaseName, chartDirectory) {
+    sh '''
+
+    export HOME="`pwd`"
+    export TILLER_NAMESPACE="''' + tillerNS + '''"
+
+    kubectl config set-cluster development --server="''' + k8sCluster + '''" --insecure-skip-tls-verify
+    kubectl config set-credentials jenkins --token="''' + clusterAuthToken + '''"
+    kubectl config set-context helm --cluster=development --namespace="''' + namespace + '''" --user=jenkins
+    kubectl config use-context helm
+
+    helm upgrade --install \
+        --namespace "''' + namespace + '''" \
+        --set app.version="''' + appVersion + '''" \
+        --set image.repository="''' + imageRepo + '''" \
+        --set image.tag="''' + imageTag + '''" \
+        ''' + releaseName + ''' \
+        ''' + chartDirectory
+}
+
 pipeline {
 
     environment {
@@ -8,7 +28,7 @@ pipeline {
 
         imageRepo = "saharshsingh/sample-dotnet-app"
 
-        ocpClusterUrl        = "https://192.168.99.100:8443"
+        k8sClusterUrl        = "https://192.168.99.100:8443"
         tillerNS             = "tiller"
         productionNamespace  = "sample-projects"
         qaNamespace          = "${productionNamespace + '-qa'}"
@@ -28,13 +48,14 @@ pipeline {
 
                 // set build version from helm chart and current branch
                 script {
-                    readFile(helmChartFile).split('\r|\n').eachWithIndex({ line, count ->
+                    readFile(helmChartFile).split('\r|\n').each({ line ->
                         if(line.trim().startsWith("version")) {
                             def version = line.replaceFirst(".*version.*(\\d+\\.\\d+\\.\\d+).*", "\$1")
                             if(!"master".equals(BRANCH_NAME)) {
                                 version = version + '-' + BRANCH_NAME
                             }
-                            env.buildVersion = version
+                            env.buildVersion         = version
+                            env.buildVersionWithHash = version + '-' + sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                         }
                     })
                 }
@@ -172,33 +193,16 @@ spec:
                 container('helm') {
 
                     script {
+                        def namespace = developmentNamespace
+                        def releaseName = appName + '-dev'
                         if("master".equals(BRANCH_NAME)) {
-                            env.namespace = env.qaNamespace
-                            env.helmRelease = env.appName + '-qa'
-                        } else {
-                            env.namespace = env.developmentNamespace
-                            env.helmRelease = env.appName + '-dev'
+                            namespace = qaNamespace
+                            releaseName = appName + '-qa'
                         }
-                    }
 
-                    withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
-                        sh '''
-
-                        export HOME="`pwd`"
-                        export TILLER_NAMESPACE=${tillerNS}
-
-                        kubectl config set-cluster development --server="${ocpClusterUrl}" --insecure-skip-tls-verify
-                        kubectl config set-credentials jenkins --token="$TOKEN"
-                        kubectl config set-context helm --cluster=development --namespace="${tillerNS}" --user=jenkins
-                        kubectl config use-context helm
-
-                        helm upgrade --install \
-                            --namespace "${namespace}" \
-                            --set image.repository="${imageRepo}" \
-                            --set image.tag="${buildVersion}" \
-                            ${helmRelease} \
-                            ${helmChartDirectory}
-                        '''
+                        withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
+                            helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, releaseName, helmChartDirectory)
+                        }
                     }
 
                 }
@@ -248,24 +252,8 @@ spec:
                 // Deploy to K8s using helm install
                 container('helm') {
 
-                    withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'TOKEN')]) {
-                        sh '''
-
-                        export HOME="`pwd`"
-                        export TILLER_NAMESPACE=${tillerNS}
-
-                        kubectl config set-cluster development --server="${ocpClusterUrl}" --insecure-skip-tls-verify
-                        kubectl config set-credentials jenkins --token="$TOKEN"
-                        kubectl config set-context helm --cluster=development --namespace="${tillerNS}" --user=jenkins
-                        kubectl config use-context helm
-
-                        helm upgrade --install \
-                            --namespace "${productionNamespace}" \
-                            --set image.repository="${imageRepo}" \
-                            --set image.tag="${buildVersion}" \
-                            ${appName} \
-                            ${helmChartDirectory}
-                        '''
+                    withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
+                        helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, appName, helmChartDirectory)
                     }
 
                 }

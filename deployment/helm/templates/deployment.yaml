@@ -28,6 +28,8 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            - name: APP_VERSION
+              value: "{{ .Values.app.version }}"
             - name: VALUES_SERVICE_TYPE
               value: "{{ .Values.env.valuesServiceType }}"
           volumeMounts:

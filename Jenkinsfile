@@ -1,4 +1,4 @@
-def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, imageRepo, imageTag, releaseName, chartDirectory) {
+def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, imageRepo, imageTag, imagePullPolicy, releaseName, chartDirectory) {
     sh '''
 
     export HOME="`pwd`"
@@ -14,6 +14,7 @@ def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, i
         --set app.version="''' + appVersion + '''" \
         --set image.repository="''' + imageRepo + '''" \
         --set image.tag="''' + imageTag + '''" \
+        --set image.pullPolicy="''' + imagePullPolicy + '''" \
         ''' + releaseName + ''' \
         ''' + chartDirectory
 }
@@ -83,16 +84,19 @@ spec:
         command:
           - /bin/cat
         tty: true
-      - name: dind
-        image: 'docker:18.09.2-dind'
+      - name: buildah
+        image: 'saharshsingh/container-management:1.0'
         imagePullPolicy: IfNotPresent
+        command:
+          - /bin/cat
+        tty: true
         securityContext:
           privileged: true
         volumeMounts:
-          - mountPath: /var/lib/docker
-            name: dind-storage
+          - mountPath: /var/lib/containers
+            name: buildah-storage
     volumes:
-      - name: dind-storage
+      - name: buildah-storage
         emptyDir: {}
 """
                 }
@@ -106,17 +110,16 @@ spec:
                 }
 
                 // build container image
-                container('dind') {
+                container('buildah') {
 
                     script {
 
-                        sh 'docker build -t "${imageRepo}:${buildVersion}" ${appName}'
+                        sh 'buildah bud -t "${imageRepo}:${buildVersion}" ${appName}'
 
                         if("master".equals(BRANCH_NAME) || "develop".equals(BRANCH_NAME)) {
                             withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                                 sh '''
-                                echo "$PASS" | docker login --username "$USER" --password-stdin
-                                docker push "${imageRepo}:${buildVersion}"
+                                buildah push --creds="$USER:$PASS" "${imageRepo}:${buildVersion}"
                                 '''
                             }
                         }
@@ -195,13 +198,15 @@ spec:
                     script {
                         def namespace = developmentNamespace
                         def releaseName = appName + '-dev'
+                        def imagePullPolicy = 'Always'
                         if("master".equals(BRANCH_NAME)) {
                             namespace = qaNamespace
                             releaseName = appName + '-qa'
+                            imagePullPolicy = 'IfNotPresent'
                         }
 
                         withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
-                            helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, releaseName, helmChartDirectory)
+                            helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, imagePullPolicy, releaseName, helmChartDirectory)
                         }
                     }
 
@@ -253,7 +258,7 @@ spec:
                 container('helm') {
 
                     withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
-                        helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, appName, helmChartDirectory)
+                        helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, 'IfNotPresent', appName, helmChartDirectory)
                     }
 
                 }

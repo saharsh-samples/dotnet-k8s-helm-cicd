@@ -135,18 +135,20 @@ spec:
             agent any
 
             steps {
-                withCredentials([usernamePassword(credentialsId:'github-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                withCredentials([usernamePassword(credentialsId:'git-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh '''
 
                     # Configure Git for tagging/committing and pushing
+                    ORIGIN=$(echo "$(git config remote.origin.url)" | sed -E "s~(http[s]*://)~\\1${USER}@~")
                     git config --global user.email "jenkins@email.com"
                     git config --global user.name "Jenkins"
                     printf "exec echo \\"${PASS}\\"" > $HOME/askgitpass.sh
                     chmod a+x $HOME/askgitpass.sh
 
                     # Tag Release Candidate
-                    git tag -a "v${buildVersion}" -m "Release v${buildVersion} successfully deployed"
-                    GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd "v${buildVersion}"
+                    TAG="v${buildVersion}"
+                    git tag -a "$TAG" -m "Release $TAG successfully deployed"
+                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" "$TAG"
 
                     # Increment version on main branch
                     main_branch="develop"
@@ -157,7 +159,7 @@ spec:
                     sed -i -E s/"version.*[0-9]+\\.[0-9]+\\.[0-9]+"/"version: $new_version"/ ${helmChartFile}
 
                     git commit -a -m "Updated version from ${buildVersion} to $new_version"
-                    GIT_ASKPASS=$HOME/askgitpass.sh git push https://${USER}@github.com/saharsh-samples/dotnet-k8s-helm-cicd $main_branch
+                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" $main_branch
                     '''
                 }
             }
@@ -205,7 +207,7 @@ spec:
                             imagePullPolicy = 'IfNotPresent'
                         }
 
-                        withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
+                        withCredentials([string(credentialsId:'k8s-cluster-auth-token', variable: 'token')]) {
                             helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, imagePullPolicy, releaseName, helmChartDirectory)
                         }
                     }
@@ -220,7 +222,7 @@ spec:
 
             steps {
                 timeout(time : 5, unit : 'DAYS') {
-                    input "Promote ${imageRepo}:${env.buildVersion} to production?"
+                    input "Promote ${imageRepo}:${buildVersion} to production?"
                 }
             }
 
@@ -257,7 +259,7 @@ spec:
                 // Deploy to K8s using helm install
                 container('helm') {
 
-                    withCredentials([string(credentialsId:'ocp-cluster-auth-token', variable: 'token')]) {
+                    withCredentials([string(credentialsId:'k8s-cluster-auth-token', variable: 'token')]) {
                         helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, 'IfNotPresent', appName, helmChartDirectory)
                     }
 

@@ -54,6 +54,7 @@ pipeline {
                             def version = line.replaceFirst(".*version.*(\\d+\\.\\d+\\.\\d+).*", "\$1")
                             if(!"master".equals(BRANCH_NAME)) {
                                 version = version + '-' + BRANCH_NAME
+                                version = version.replace('/', '-')
                             }
                             env.buildVersion         = version
                             env.buildVersionWithHash = version + '-' + sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()

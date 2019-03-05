@@ -1,3 +1,24 @@
+/**
+ * Installs Helm to designated Kubernetes cluster
+ *
+ * Params:
+ *   - tillerNs         : Kubernetes Namespace where Tiller server is deployed
+ *   - k8sCluster       : Kubernetes Cluster URL
+ *   - clusterAuthToken : Token used to authenticate to the Kubernetes Cluster.
+ *                        This will be set in the `kubectl` context
+ *   - namespace        : Kubernetes namespace where application will be
+ *                        deployed
+ *   - appVersion       : Version of application to pass to the application
+ *                        (application specific)
+ *   - imageRepo        : Registry URL (including app subpath) from where to pull
+ *                        application container image
+ *   - imageTag         : Tag of application container image to pull
+ *   - imagePullPolicy  : Image pull policy to set in application's deployment
+ *                        template
+ *   - releaseName      : Helm Release to use
+ *   - chartDirectory   : Location of directory in repo containing Helm charts
+ *                        (relative to repo top level) 
+ */
 def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, imageRepo, imageTag, imagePullPolicy, releaseName, chartDirectory) {
     sh '''
 
@@ -19,21 +40,62 @@ def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, i
         ''' + chartDirectory
 }
 
+/**
+ * REFERENCE CI/CD PIPELINE FOR KUBERNETES NATIVE .NET APPLICATION
+ */
 pipeline {
+
+    parameters {
+
+        // Application Properties
+        string(name: 'APP_NAME', defaultValue: 'sample-dotnet-app', description: 'Used as the base in Helm Release names')
+        string(name: 'APP_DIRECTORY', defaultValue: 'sample-dotnet-app', description: 'Relative path to .NET code and Dockerfile')
+        string(name: 'HELM_DIRECTORY', defaultValue: 'deployment/helm', description: 'Relative path to Helm chart and templates')
+        string(name: 'SOURCE_REGISTRY', defaultValue: 'docker.io/saharshsingh', description: 'Registry where image will be pused for long term storage')
+
+        // Cluster Properties
+        string(name: 'K8S_CLUSTER_URL', defaultValue: 'https://192.168.99.100:8443', description: 'Target cluster for all deployments')
+        string(name: 'K8S_PROD_NAMESPACE', defaultValue: 'sample-projects', description: 'Production namespace. Appended with -dev and -qa for those environments')
+        string(name: 'TILLER_NAMESPACE', defaultValue: 'tiller', description: 'Namespace on K8S cluster where tiller server is installed')
+
+        // Jenkins Properties
+        string(name: 'REGISTRY_CREDENTIAL_ID', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
+        string(name: 'K8S_TOKEN_CREDENTIAL_ID', defaultValue: 'k8s-cluster-auth-token', description: 'ID of Jenkins credential containing Kubernetes Cluster authentication token for Helm deploys')
+        string(name: 'GIT_CREDENTIALS_ID', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
+        string(name: 'CONFIRMATION_WAIT_VALUE', defaultValue: '5', description: 'Integer indicating length of time to wait for manual confirmation')
+        string(name: 'CONFIRMATION_WAIT_UNITS', defaultValue: 'DAYS', description: 'Time unit to use for CONFIRMATION_WAIT_VALUE')
+
+        // Git Properties
+        string(name: 'MAIN_BRANCH', defaultValue: 'develop', description: 'Main branch of Git repostory. This is the source and destination of feature branches')
+        string(name: 'RELEASE_BRANCH', defaultValue: 'master', description: 'Release branch of Git repostory. Merges to this trigger releases (Git tags and version increments)')
+    }
 
     environment {
 
-        appName            = "sample-dotnet-app"
-        helmChartDirectory = "deployment/helm"
+        // Application Properties
+        appName            = "${APP_NAME}"
+        appDirectory       = "${APP_DIRECTORY}"
+        helmChartDirectory = "${HELM_DIRECTORY}"
         helmChartFile      = "${helmChartDirectory + '/Chart.yaml'}"
+        imageRepo          = "${SOURCE_REGISTRY + '/' + APP_NAME}"
 
-        imageRepo = "saharshsingh/sample-dotnet-app"
-
-        k8sClusterUrl        = "https://192.168.99.100:8443"
-        tillerNS             = "tiller"
-        productionNamespace  = "sample-projects"
+        // Cluster Properties
+        k8sClusterUrl        = "${K8S_CLUSTER_URL}"
+        tillerNS             = "${TILLER_NAMESPACE}"
+        productionNamespace  = "${K8S_PROD_NAMESPACE}"
         qaNamespace          = "${productionNamespace + '-qa'}"
         developmentNamespace = "${productionNamespace + '-dev'}"
+
+        // Jenkins Properties
+        imageRegistryAuth        = "${REGISTRY_CREDENTIAL_ID}"
+        k8sClusterAuthToken      = "${K8S_TOKEN_CREDENTIAL_ID}"
+        gitAuth                  = "${GIT_CREDENTIALS_ID}"
+        confirmationTimeoutValue = "${CONFIRMATION_WAIT_VALUE}"
+        confirmationTimeoutUnits = "${CONFIRMATION_WAIT_UNITS}"
+
+        // Git Properties
+        mainBranch    = "${MAIN_BRANCH}"
+        releaseBranch = "${RELEASE_BRANCH}"
     }
 
     // no default agent/pod to stand up
@@ -41,6 +103,12 @@ pipeline {
 
     stages {
 
+        /**
+         * STAGE - INITIALIZE
+         *
+         * The intention of this stage is to do any initialization that modifies the 
+         * pipeline environment before running any of the other stages.
+         */
         stage('Initialize') {
 
             agent any
@@ -49,14 +117,27 @@ pipeline {
 
                 // set build version from helm chart and current branch
                 script {
+
+                    // Read Helm Chart file line by line
                     readFile(helmChartFile).split('\r|\n').each({ line ->
+
+                        // Look for line that starts with 'version'
                         if(line.trim().startsWith("version")) {
+
+                            // Strip out everything on the line except the semantic version (i.e. #.#.#)
                             def version = line.replaceFirst(".*version.*(\\d+\\.\\d+\\.\\d+).*", "\$1")
-                            if(!"master".equals(BRANCH_NAME)) {
+
+                            // If not on release branch, append branch name to semantic version
+                            if(! releaseBranch.equals(BRANCH_NAME)) {
                                 version = version + '-' + BRANCH_NAME
+                                // feature branches may have the 'feature/branch-name' structure
+                                // replace any '/' with '-' to keep version useable as image tag
                                 version = version.replace('/', '-')
                             }
+
+                            // Set version information to build environment
                             env.buildVersion         = version
+                            // Set version + "git commit hash" information to environment
                             env.buildVersionWithHash = version + '-' + sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                         }
                     })
@@ -64,7 +145,13 @@ pipeline {
             }
         }
 
-        // Build and deliver application container image
+        /**
+         * STAGE - Build and deliver application container image
+         *
+         * Uses microsoft/dotnet:2.2-sdk and saharshsingh/container-management:1.0
+         * images to build .NET binaries, create container image, and push the container
+         * image to ACR for long term storage 
+         */
         stage('Build and deliver container image') {
 
             // 'Build and deliver' agent pod template
@@ -105,20 +192,21 @@ spec:
 
             steps {
 
-                // build dotnet binaries
+                // build dotnet binaries (ideally this should include automated testing)
                 container('dotnet') {
-                    sh 'dotnet publish -c Release -o out ${appName}'
+                    sh 'dotnet publish -c Release -o out ${appDirectory}'
                 }
 
-                // build container image
+                // build (and optionally deliver) container image
                 container('buildah') {
 
                     script {
 
-                        sh 'buildah bud -t "${imageRepo}:${buildVersion}" ${appName}'
+                        sh 'buildah bud -t "${imageRepo}:${buildVersion}" ${appDirectory}'
 
-                        if("master".equals(BRANCH_NAME) || "develop".equals(BRANCH_NAME)) {
-                            withCredentials([usernamePassword(credentialsId:'image-registry-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        // only push to registry for branches where deploy stages won't be skipped
+                        if(releaseBranch.equals(BRANCH_NAME) || mainBranch.equals(BRANCH_NAME)) {
+                            withCredentials([usernamePassword(credentialsId: imageRegistryAuth, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                                 sh '''
                                 buildah push --creds="$USER:$PASS" "${imageRepo}:${buildVersion}"
                                 '''
@@ -129,14 +217,21 @@ spec:
             }
         }
 
+        /**
+         * STAGE - Tag and Increment Version
+         *
+         * Only executes on release branch builds. Creates a Git tag on current commit
+         * using version from Helm chart in repository. Also, checks out the HEAD of
+         * main branch and increments the patch component of the Helm chart version
+         */
         stage('Tag and Increment Version') {
 
-            when { branch 'master' }
+            when { branch releaseBranch }
 
             agent any
 
             steps {
-                withCredentials([usernamePassword(credentialsId:'git-auth', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                withCredentials([usernamePassword(credentialsId: gitAuth, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh '''
 
                     # Configure Git for tagging/committing and pushing
@@ -152,24 +247,30 @@ spec:
                     GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" "$TAG"
 
                     # Increment version on main branch
-                    main_branch="develop"
-                    git checkout $main_branch
-                    git reset --hard origin/$main_branch
+                    git checkout ${mainBranch}
+                    git reset --hard origin/${mainBranch}
 
                     new_version="$(echo "${buildVersion}" | cut -d '.' -f 1,2).$(($(echo "${buildVersion}" | cut -d '.' -f 3) + 1))"
                     sed -i -E s/"version.*[0-9]+\\.[0-9]+\\.[0-9]+"/"version: $new_version"/ ${helmChartFile}
 
                     git commit -a -m "Updated version from ${buildVersion} to $new_version"
-                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" $main_branch
+                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" ${mainBranch}
                     '''
                 }
             }
 
         }
 
+        /**
+         * STAGE - Deploy to Staging
+         *
+         * Only executes on main and release branch builds. Deploys to either 'Dev'
+         * or 'QA' envrionment, based on whether main or release branch is being
+         * built.
+         */
         stage('Deploy to Staging') {
 
-            when { anyOf { branch 'master'; branch 'develop' } }
+            when { anyOf { branch releaseBranch; branch mainBranch } }
 
             // 'Deploy' agent pod template
             agent {
@@ -199,16 +300,20 @@ spec:
                 container('helm') {
 
                     script {
+
+                        // by default use values for dev envrionment
                         def namespace = developmentNamespace
                         def releaseName = appName + '-dev'
                         def imagePullPolicy = 'Always'
-                        if("master".equals(BRANCH_NAME)) {
+
+                        // if on release branch, override them for QA environment
+                        if(releaseBranch.equals(BRANCH_NAME)) {
                             namespace = qaNamespace
                             releaseName = appName + '-qa'
                             imagePullPolicy = 'IfNotPresent'
                         }
 
-                        withCredentials([string(credentialsId:'k8s-cluster-auth-token', variable: 'token')]) {
+                        withCredentials([string(credentialsId: k8sClusterAuthToken, variable: 'token')]) {
                             helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, imagePullPolicy, releaseName, helmChartDirectory)
                         }
                     }
@@ -217,21 +322,31 @@ spec:
             }
         }
 
+        /**
+         * STAGE - Confirm Promotion to Production
+         *
+         * Pipeline halts for 5 days and waits for someone to click Proceed or Abort.
+         */
         stage('Confirm Promotion to Production') {
 
-            when { branch 'master' }
+            when { branch releaseBranch }
 
             steps {
-                timeout(time : 5, unit : 'DAYS') {
+                timeout(time : Integer.parseInt(confirmationTimeoutValue), unit : confirmationTimeoutUnits) {
                     input "Promote ${imageRepo}:${buildVersion} to production?"
                 }
             }
 
         }
 
+        /**
+         * STAGE - Promote to Production
+         *
+         * Once promotion is confirmed in previous step, build is promoted to production
+         */
         stage('Promote to Production') {
 
-            when { branch 'master' }
+            when { branch releaseBranch }
 
             // 'Deploy' agent pod template
             agent {
@@ -260,7 +375,7 @@ spec:
                 // Deploy to K8s using helm install
                 container('helm') {
 
-                    withCredentials([string(credentialsId:'k8s-cluster-auth-token', variable: 'token')]) {
+                    withCredentials([string(credentialsId: k8sClusterAuthToken, variable: 'token')]) {
                         helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, 'IfNotPresent', appName, helmChartDirectory)
                     }
 

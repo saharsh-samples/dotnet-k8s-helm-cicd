@@ -48,54 +48,54 @@ pipeline {
     parameters {
 
         // Application Properties
-        string(name: 'APP_NAME', defaultValue: 'sample-dotnet-app', description: 'Used as the base in Helm Release names')
-        string(name: 'APP_DIRECTORY', defaultValue: 'sample-dotnet-app', description: 'Relative path to .NET code and Dockerfile')
-        string(name: 'HELM_DIRECTORY', defaultValue: 'deployment/helm', description: 'Relative path to Helm chart and templates')
-        string(name: 'SOURCE_REGISTRY', defaultValue: 'docker.io/saharshsingh', description: 'Registry where image will be pused for long term storage')
+        string(name: 'appName', defaultValue: 'sample-dotnet-app', description: 'Used as the base in Helm Release names')
+        string(name: 'appDirectory', defaultValue: 'sample-dotnet-app', description: 'Relative path to .NET code and Dockerfile')
+        string(name: 'helmChartDirectory', defaultValue: 'deployment/helm', description: 'Relative path to Helm chart and templates')
+        string(name: 'sourceRegistry', defaultValue: 'docker.io/saharshsingh', description: 'Registry where image will be pused for long term storage')
 
         // Cluster Properties
-        string(name: 'K8S_CLUSTER_URL', defaultValue: 'https://192.168.99.100:8443', description: 'Target cluster for all deployments')
-        string(name: 'K8S_PROD_NAMESPACE', defaultValue: 'sample-projects', description: 'Production namespace. Appended with -dev and -qa for those environments')
-        string(name: 'TILLER_NAMESPACE', defaultValue: 'tiller', description: 'Namespace on K8S cluster where tiller server is installed')
+        string(name: 'k8sClusterUrl', defaultValue: 'https://192.168.99.100:8443', description: 'Target cluster for all deployments')
+        string(name: 'productionNamespace', defaultValue: 'sample-projects', description: 'Production namespace. Appended with -dev and -qa for those environments')
+        string(name: 'tillerNS', defaultValue: 'tiller', description: 'Namespace on K8S cluster where tiller server is installed')
 
         // Jenkins Properties
-        string(name: 'REGISTRY_CREDENTIAL_ID', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
-        string(name: 'K8S_TOKEN_CREDENTIAL_ID', defaultValue: 'k8s-cluster-auth-token', description: 'ID of Jenkins credential containing Kubernetes Cluster authentication token for Helm deploys')
-        string(name: 'GIT_CREDENTIALS_ID', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
-        string(name: 'CONFIRMATION_WAIT_VALUE', defaultValue: '5', description: 'Integer indicating length of time to wait for manual confirmation')
-        string(name: 'CONFIRMATION_WAIT_UNITS', defaultValue: 'DAYS', description: 'Time unit to use for CONFIRMATION_WAIT_VALUE')
+        string(name: 'imageRegistryCredentialId', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
+        string(name: 'k8sTokenCredentialId', defaultValue: 'k8s-cluster-auth-token', description: 'ID of Jenkins credential containing Kubernetes Cluster authentication token for Helm deploys')
+        string(name: 'gitCredentialId', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
+        string(name: 'confirmationTimeoutValue', defaultValue: '5', description: 'Integer indicating length of time to wait for manual confirmation')
+        string(name: 'confirmationTimeoutUnits', defaultValue: 'DAYS', description: 'Time unit to use for CONFIRMATION_WAIT_VALUE')
 
         // Git Properties
-        string(name: 'MAIN_BRANCH', defaultValue: 'develop', description: 'Main branch of Git repostory. This is the source and destination of feature branches')
-        string(name: 'RELEASE_BRANCH', defaultValue: 'master', description: 'Release branch of Git repostory. Merges to this trigger releases (Git tags and version increments)')
+        string(name: 'mainBranch', defaultValue: 'develop', description: 'Main branch of Git repostory. This is the source and destination of feature branches')
+        string(name: 'releaseBranch', defaultValue: 'master', description: 'Release branch of Git repostory. Merges to this trigger releases (Git tags and version increments)')
     }
 
     environment {
 
         // Application Properties
-        appName            = "${APP_NAME}"
-        appDirectory       = "${APP_DIRECTORY}"
-        helmChartDirectory = "${HELM_DIRECTORY}"
+        appName            = "${appName}"
+        appDirectory       = "${appDirectory}"
+        helmChartDirectory = "${helmChartDirectory}"
         helmChartFile      = "${helmChartDirectory + '/Chart.yaml'}"
-        imageRepo          = "${SOURCE_REGISTRY + '/' + APP_NAME}"
+        imageRepo          = "${sourceRegistry + '/' + appName}"
 
         // Cluster Properties
-        k8sClusterUrl        = "${K8S_CLUSTER_URL}"
-        tillerNS             = "${TILLER_NAMESPACE}"
-        productionNamespace  = "${K8S_PROD_NAMESPACE}"
+        k8sClusterUrl        = "${k8sClusterUrl}"
+        tillerNS             = "${tillerNS}"
+        productionNamespace  = "${productionNamespace}"
         qaNamespace          = "${productionNamespace + '-qa'}"
         developmentNamespace = "${productionNamespace + '-dev'}"
 
         // Jenkins Properties
-        imageRegistryAuth        = "${REGISTRY_CREDENTIAL_ID}"
-        k8sClusterAuthToken      = "${K8S_TOKEN_CREDENTIAL_ID}"
-        gitAuth                  = "${GIT_CREDENTIALS_ID}"
-        confirmationTimeoutValue = "${CONFIRMATION_WAIT_VALUE}"
-        confirmationTimeoutUnits = "${CONFIRMATION_WAIT_UNITS}"
+        imageRegistryCredentialId = "${imageRegistryCredentialId}"
+        k8sTokenCredentialId      = "${k8sTokenCredentialId}"
+        gitCredentialId           = "${gitCredentialId}"
+        confirmationTimeoutValue  = "${confirmationTimeoutValue}"
+        confirmationTimeoutUnits  = "${confirmationTimeoutUnits}"
 
         // Git Properties
-        mainBranch    = "${MAIN_BRANCH}"
-        releaseBranch = "${RELEASE_BRANCH}"
+        mainBranch    = "${mainBranch}"
+        releaseBranch = "${releaseBranch}"
     }
 
     // no default agent/pod to stand up
@@ -206,7 +206,7 @@ spec:
 
                         // only push to registry for branches where deploy stages won't be skipped
                         if(releaseBranch.equals(BRANCH_NAME) || mainBranch.equals(BRANCH_NAME)) {
-                            withCredentials([usernamePassword(credentialsId: imageRegistryAuth, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                            withCredentials([usernamePassword(credentialsId: imageRegistryCredentialId, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                                 sh '''
                                 buildah push --creds="$USER:$PASS" "${imageRepo}:${buildVersion}"
                                 '''
@@ -231,7 +231,7 @@ spec:
             agent any
 
             steps {
-                withCredentials([usernamePassword(credentialsId: gitAuth, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                withCredentials([usernamePassword(credentialsId: gitCredentialId, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
                     sh '''
 
                     # Configure Git for tagging/committing and pushing
@@ -243,7 +243,7 @@ spec:
 
                     # Tag Release Candidate
                     TAG="v${buildVersion}"
-                    git tag -a "$TAG" -m "Release $TAG successfully deployed"
+                    git tag -a "$TAG" -m "Release $TAG created and delivered"
                     GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" "$TAG"
 
                     # Increment version on main branch
@@ -265,7 +265,7 @@ spec:
          * STAGE - Deploy to Staging
          *
          * Only executes on main and release branch builds. Deploys to either 'Dev'
-         * or 'QA' envrionment, based on whether main or release branch is being
+         * or 'QA' environment, based on whether main or release branch is being
          * built.
          */
         stage('Deploy to Staging') {
@@ -313,7 +313,7 @@ spec:
                             imagePullPolicy = 'IfNotPresent'
                         }
 
-                        withCredentials([string(credentialsId: k8sClusterAuthToken, variable: 'token')]) {
+                        withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
                             helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, imageRepo, buildVersion, imagePullPolicy, releaseName, helmChartDirectory)
                         }
                     }
@@ -325,7 +325,7 @@ spec:
         /**
          * STAGE - Confirm Promotion to Production
          *
-         * Pipeline halts for 5 days and waits for someone to click Proceed or Abort.
+         * Pipeline halts for configured amount of time and waits for someone to click Proceed or Abort.
          */
         stage('Confirm Promotion to Production') {
 
@@ -375,7 +375,7 @@ spec:
                 // Deploy to K8s using helm install
                 container('helm') {
 
-                    withCredentials([string(credentialsId: k8sClusterAuthToken, variable: 'token')]) {
+                    withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
                         helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, imageRepo, buildVersion, 'IfNotPresent', appName, helmChartDirectory)
                     }
 

@@ -45,7 +45,7 @@ One option is to run a local docker registry and push your image there. For exam
 
     docker push localhost:5000/sample-dotnet-app
 
-Now the `APP_IMAGE` variable in [`deployment.properties`](deployment.properties) can be set to use the image from this local registry. For the Minikube VM, this registry is running at a different address than `localhost`, typically `192.168.99.1`. Using the address of registry as seen by the Minikube VM (let's say, for example, `192.168.99.1`), the `APP_IMAGE` variable can be set to `192.168.99.1:5000/resideo/sample-dotnet-app`.
+Now the `APP_IMAGE` variable in [`deployment.properties`](deployment.properties) can be set to use the image from this local registry. For the Minikube VM, this registry is running at a different address than `localhost`, typically `192.168.99.1`. Using the address of registry as seen by the Minikube VM (let's say, for example, `192.168.99.1`), the `APP_IMAGE` variable can be set to `192.168.99.1:5000/sample-dotnet-app`.
 
 ##### Use Minikube Docker Daemon
 
@@ -64,6 +64,10 @@ Important configuration items:
 - `APP_NAMESPACE` : Value assigned to this is used as the value for the `namespace` metadata field for all Kubernetes objects defined in the YAML template files.
 
 - `APP_IMAGE` : Defines where the deployment object will find the image to use for running an instance of the application. See the [Application Container Image](#application-container-image) section above for details.
+
+- `APP_SERVICE_TYPE` : Service type to assign to the `sample-dotnet-app` service resource. Typically leave this to `ClusterIP`. However, if you want to be able to access the application from outside the cluster (i.e. your laptop instead of the Minikube VM) when running in Minkube, change this to `NodePort`. This is recommended since it's difficult to setup ingress capability on Minikube.
+
+- `APP_INGRESS_HOST` : This will be set as the value for `host` field in the ingress spec. The default is based on Minishift.
 
 - `APP_ENV_*` : Variables starting with this prefix follow a convention of this repository to indicate that the value will be injected as an environment variable into each application pod instance.
 

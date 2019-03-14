@@ -20,11 +20,7 @@ The intention here is provide a simple APS.NET web service that can be container
 
 ## Build
 
-### .NET binaries
-
-        dotnet publish -c Release -o out .
-
-### Container Image
+### .NET binaries and Container Image
 
         docker build -t sample-dotnet-app .
 

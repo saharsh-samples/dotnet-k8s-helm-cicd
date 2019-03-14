@@ -1,0 +1,16 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  labels:
+    app: sample-dotnet-app
+  name: sample-dotnet-app
+  namespace: "$APP_NAMESPACE"
+spec:
+  rules:
+  - host: "$APP_INGRESS_HOST"
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: sample-dotnet-app
+          servicePort: 8080

@@ -31,3 +31,6 @@ msbuild.wrn
 
 # Visual Studio 2015
 .vs/
+
+# Basic Kubernetes Deployment
+.resolved/

@@ -8,13 +8,16 @@ app:
   version: changeme
 
 image:
-  repository: saharshsingh/sample-dotnet-app
+  repository: saharshsingh/dotnet-k8s-helm-sample
   tag: latest
   pullPolicy: IfNotPresent
 
 service:
   type: ClusterIP
   port: 8080
+
+ingress:
+  host: dotnet-k8s-helm-sample-sample-projects.192.168.99.100.nip.io
 
 env:
   valuesServiceType: simple

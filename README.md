@@ -11,7 +11,7 @@ The sample application is a very basic ASP.NET 2.2 WebAPI project. Details regar
 There are references for following deployment strategies in this repository. Each supports deploying to any Kubernetes cluster (including Openshift). Consult the README for each for further details.
 
 * [Basic Kubernetes Deployment](deployment/k8s/README.md)
-* [Helm](deployment/helm/README.md)
+* [Helm](deployment/helm-k8s/README.md)
 
 ## CI/CD Pipeline
 
@@ -29,9 +29,9 @@ The pipeline assumes the repository uses a [Gitflow](https://www.atlassian.com/g
 
 ### Versioning
 
-The pipeline automates majority of the activity related to versioning of the application. The version is expected to follow [typical semantic versioning](https://en.wikipedia.org/wiki/Software_versioning#Sequence-based_identifiers), and the version of the software is stored in the `version` field of the [`Chart.yaml`](deployment/helm/Chart.yaml) file used for Helm installs. This version number is expected to change under two circumstances:
+The pipeline automates majority of the activity related to versioning of the application. The version is expected to follow [typical semantic versioning](https://en.wikipedia.org/wiki/Software_versioning#Sequence-based_identifiers), and the version of the software is stored in the `version` field of the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file used for Helm installs. This version number is expected to change under two circumstances:
 
-1. It is automatically changed by the pipeline as a result of changes pushed to the `master` branch. In this case, the pipeline tags the `HEAD` of the `master` branch with the version number contained in the [`Chart.yaml`](deployment/helm/Chart.yaml) file. After pushing the tag to the origin repository, the pipeline then checks out the current `HEAD` of the `develop` branch, increments the third digit of the semantic version by `one`, and pushes the new `HEAD` of develop to the origin repository.
+1. It is automatically changed by the pipeline as a result of changes pushed to the `master` branch. In this case, the pipeline tags the `HEAD` of the `master` branch with the version number contained in the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file. After pushing the tag to the origin repository, the pipeline then checks out the current `HEAD` of the `develop` branch, increments the third digit of the semantic version by `one`, and pushes the new `HEAD` of develop to the origin repository.
 
 1. It is manually changed by the maintainers of the application if the major and/or minor versions need to be incremented. The change will be applied like any other change to the application source - using a feature branch that is merged into `develop` first. 
 
@@ -43,7 +43,7 @@ Following sections describe each stage of the CI/CD pipeline and indicate the br
 
 **Run for:** All branches
 
-The intention of this stage is to do any initialization that modifies the pipeline environment before running any of the other stages. As of now, only such initialization needed is determining the build version. The build version is largely based on the version stored in the [`Chart.yaml`](deployment/helm/Chart.yaml) file. For `master` branch, the build version is exactly that. For other branches, the build version is determined by appending a '-' followed by the name of the branch (e.g. 1.0.0-develop or 2.3.5-some-feature-request).
+The intention of this stage is to do any initialization that modifies the pipeline environment before running any of the other stages. As of now, only such initialization needed is determining the build version. The build version is largely based on the version stored in the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file. For `master` branch, the build version is exactly that. For other branches, the build version is determined by appending a '-' followed by the name of the branch (e.g. 1.0.0-develop or 2.3.5-some-feature-request).
 
 The build version is used in following places:
 
@@ -81,7 +81,7 @@ After a successful "build and deliver" stage, this stage runs the automated vers
 
 * A Git tag is created using the build version and pushed to the origin repository. 
 
-* Then, the pipeline checks out the `develop` branch, updates the `version` field in the [`Chart.yaml`](deployment/helm/Chart.yaml) file by incrementing the last digit by `one`, commits the changes, and pushes the changes to the origin repository.
+* Then, the pipeline checks out the `develop` branch, updates the `version` field in the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file by incrementing the last digit by `one`, commits the changes, and pushes the changes to the origin repository.
 
 This stage is run using `agent any` as no specific Kubernetes pods need to be spawned to execute this stage.
 
@@ -156,7 +156,7 @@ Following set of instructions is an example of how to achieve the above setup in
         oc login -u system:admin
         oc adm policy add-scc-to-user privileged -n jenkins -z jenkins
 
-1. Install the `tiller` server in Minishift under the `tiller` namespace. See [deployment/helm/README.md](deployment/helm/README.md) for instructions.
+1. Install the `tiller` server in Minishift under the `tiller` namespace. See [deployment/helm-k8s/README.md](deployment/helm-k8s/README.md) for instructions.
 
 1. Give the `jenkins` service account `edit` privileges in `tiller` namespace.
 

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+spec:
+    serviceAccountName: jenkins-privileged
+    containers:
+      - name: jnlp
+        image: 'jenkinsci/jnlp-slave:alpine'
+      - name: buildah
+        image: 'saharshsingh/container-management:1.0'
+        imagePullPolicy: IfNotPresent
+        command:
+          - /bin/cat
+        tty: true
+        securityContext:
+          privileged: true
+        volumeMounts:
+          - mountPath: /var/lib/containers
+            name: buildah-storage
+    volumes:
+      - name: buildah-storage
+        emptyDir: {}

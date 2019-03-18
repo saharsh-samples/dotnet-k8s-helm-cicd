@@ -31,7 +31,7 @@ def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, i
     kubectl config set-context helm --cluster=development --namespace="''' + namespace + '''" --user=jenkins
     kubectl config use-context helm
 
-    helm upgrade --install \
+    helm upgrade --install --wait \
         --namespace "''' + namespace + '''" \
         --set app.version="''' + appVersion + '''" \
         --set ingress.host="''' + ingressHost + '''" \
@@ -64,6 +64,7 @@ pipeline {
         string(name: 'prodIngressHost', defaultValue: 'dotnet-k8s-helm-sample-sample-projects.192.168.99.100.nip.io', description:'Ingress Host to set when deploying in Production environment.')
 
         // Jenkins Properties
+        string(name: 'k8sCloudForDynamicSlaves', defaultValue: 'openshift', description: 'Cloud name for Kubernetes cluster where Jenkins slave pods will be spawned')
         string(name: 'imageRegistryCredentialId', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
         string(name: 'k8sTokenCredentialId', defaultValue: 'k8s-cluster-auth-token', description: 'ID of Jenkins credential containing Kubernetes Cluster authentication token for Helm deploys')
         string(name: 'gitCredentialId', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
@@ -95,6 +96,7 @@ pipeline {
         devIngressHost       = "${devIngressHost}"
 
         // Jenkins Properties
+        k8sCloudForDynamicSlaves  = "${k8sCloudForDynamicSlaves}"
         imageRegistryCredentialId = "${imageRegistryCredentialId}"
         k8sTokenCredentialId      = "${k8sTokenCredentialId}"
         gitCredentialId           = "${gitCredentialId}"
@@ -125,6 +127,10 @@ pipeline {
 
                 // set build version from helm chart and current branch
                 script {
+
+                    // Read Pod templates for dynamic slaves from files
+                    env.buildahAgentYaml = readFile '.jenkins/buildah-agent.yml'
+                    env.helmAgentYaml = readFile '.jenkins/helm-agent.yml'
 
                     // Read Helm Chart file line by line
                     readFile(helmChartFile).split('\r|\n').each({ line ->
@@ -165,31 +171,9 @@ pipeline {
             // 'Build and deliver' agent pod template
             agent {
                 kubernetes {
-                    cloud 'openshift'
+                    cloud k8sCloudForDynamicSlaves
                     label 'buildah'
-                    yaml """
-apiVersion: v1
-kind: Pod
-spec:
-    serviceAccountName: jenkins-privileged
-    containers:
-      - name: jnlp
-        image: 'jenkinsci/jnlp-slave:alpine'
-      - name: buildah
-        image: 'saharshsingh/container-management:1.0'
-        imagePullPolicy: IfNotPresent
-        command:
-          - /bin/cat
-        tty: true
-        securityContext:
-          privileged: true
-        volumeMounts:
-          - mountPath: /var/lib/containers
-            name: buildah-storage
-    volumes:
-      - name: buildah-storage
-        emptyDir: {}
-"""
+                    yaml buildahAgentYaml
                 }
             }
 
@@ -279,22 +263,9 @@ spec:
             // 'Deploy' agent pod template
             agent {
                 kubernetes {
-                    cloud 'openshift'
+                    cloud k8sCloudForDynamicSlaves
                     label 'helm'
-                    yaml """
-apiVersion: v1
-kind: Pod
-spec:
-    containers:
-      - name: jnlp
-        image: 'jenkinsci/jnlp-slave:alpine'
-      - name: helm
-        image: 'saharshsingh/helm:2.12.3'
-        imagePullPolicy: IfNotPresent
-        command:
-          - /bin/cat
-        tty: true
-"""
+                    yaml helmAgentYaml
                 }
             }
 
@@ -357,22 +328,9 @@ spec:
             // 'Deploy' agent pod template
             agent {
                 kubernetes {
-                    cloud 'openshift'
+                    cloud k8sCloudForDynamicSlaves
                     label 'helm'
-                    yaml """
-apiVersion: v1
-kind: Pod
-spec:
-    containers:
-      - name: jnlp
-        image: 'jenkinsci/jnlp-slave:alpine'
-      - name: helm
-        image: 'saharshsingh/helm:2.12.3'
-        imagePullPolicy: IfNotPresent
-        command:
-          - /bin/cat
-        tty: true
-"""
+                    yaml helmAgentYaml
                 }
             }
 

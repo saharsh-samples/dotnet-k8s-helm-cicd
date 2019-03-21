@@ -1,46 +1,6 @@
-/**
- * Installs Helm to designated Kubernetes cluster
- *
- * Params:
- *   - tillerNs         : Kubernetes Namespace where Tiller server is deployed
- *   - k8sCluster       : Kubernetes Cluster URL
- *   - clusterAuthToken : Token used to authenticate to the Kubernetes Cluster.
- *                        This will be set in the `kubectl` context
- *   - namespace        : Kubernetes namespace where application will be
- *                        deployed
- *   - appVersion       : Version of application to pass to the application
- *                        (application specific)
- *   - ingressHost      : Ingress Host to set given target environment
- *   - imageRepo        : Registry URL (including app subpath) from where to pull
- *                        application container image
- *   - imageTag         : Tag of application container image to pull
- *   - imagePullPolicy  : Image pull policy to set in application's deployment
- *                        template
- *   - releaseName      : Helm Release to use
- *   - chartDirectory   : Location of directory in repo containing Helm charts
- *                        (relative to repo top level) 
- */
-def helmInstall(tillerNs, k8sCluster, clusterAuthToken, namespace, appVersion, ingressHost, imageRepo, imageTag, imagePullPolicy, releaseName, chartDirectory) {
-    sh '''
-
-    export HOME="`pwd`"
-    export TILLER_NAMESPACE="''' + tillerNS + '''"
-
-    kubectl config set-cluster development --server="''' + k8sCluster + '''" --insecure-skip-tls-verify
-    kubectl config set-credentials jenkins --token="''' + clusterAuthToken + '''"
-    kubectl config set-context helm --cluster=development --namespace="''' + namespace + '''" --user=jenkins
-    kubectl config use-context helm
-
-    helm upgrade --install --wait \
-        --namespace "''' + namespace + '''" \
-        --set app.version="''' + appVersion + '''" \
-        --set ingress.host="''' + ingressHost + '''" \
-        --set image.repository="''' + imageRepo + '''" \
-        --set image.tag="''' + imageTag + '''" \
-        --set image.pullPolicy="''' + imagePullPolicy + '''" \
-        ''' + releaseName + ''' \
-        ''' + chartDirectory
-}
+// Define global variable to hold dynamically loaded modules
+// Modules will be loaded in 'Initialize' step
+def modules = [:]
 
 /**
  * REFERENCE CI/CD PIPELINE FOR KUBERNETES NATIVE .NET APPLICATION
@@ -128,9 +88,12 @@ pipeline {
                 // set build version from helm chart and current branch
                 script {
 
+                    // load modules
+                    modules.helm = load '.jenkins/groovy/helm.groovy'
+
                     // Read Pod templates for dynamic slaves from files
-                    env.buildahAgentYaml = readFile '.jenkins/buildah-agent.yml'
-                    env.helmAgentYaml = readFile '.jenkins/helm-agent.yml'
+                    env.buildahAgentYaml = readFile '.jenkins/agents/buildah-agent.yml'
+                    env.helmAgentYaml    = readFile '.jenkins/agents/helm-agent.yml'
 
                     // Read Helm Chart file line by line
                     readFile(helmChartFile).split('\r|\n').each({ line ->
@@ -291,7 +254,25 @@ pipeline {
                         }
 
                         withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
-                            helmInstall(tillerNS, k8sClusterUrl, token, namespace, buildVersionWithHash, ingressHost, imageRepo, buildVersion, imagePullPolicy, releaseName, helmChartDirectory)
+                            script {
+
+                                // define Helm install context
+                                def context              = modules.helm.newInstallContext()
+                                context.tillerNS         = tillerNS
+                                context.k8sCluster       = k8sClusterUrl
+                                context.clusterAuthToken = token
+                                context.namespace        = namespace
+                                context.appVersion       = buildVersionWithHash
+                                context.ingressHost      = ingressHost
+                                context.imageRepo        = imageRepo
+                                context.imageTag         = buildVersion
+                                context.imagePullPolicy  = imagePullPolicy
+                                context.releaseName      = releaseName
+                                context.chartDirectory   = helmChartDirectory
+
+                                // run Helm install
+                                modules.helm.install(context)
+                            }
                         }
                     }
 
@@ -340,7 +321,25 @@ pipeline {
                 container('helm') {
 
                     withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
-                        helmInstall(tillerNS, k8sClusterUrl, token, productionNamespace, buildVersionWithHash, prodIngressHost, imageRepo, buildVersion, 'IfNotPresent', appName, helmChartDirectory)
+                        script {
+
+                            // define context
+                            def context              = modules.helm.newInstallContext()
+                            context.tillerNS         = tillerNS
+                            context.k8sCluster       = k8sClusterUrl
+                            context.clusterAuthToken = token
+                            context.namespace        = productionNamespace
+                            context.appVersion       = buildVersionWithHash
+                            context.ingressHost      = prodIngressHost
+                            context.imageRepo        = imageRepo
+                            context.imageTag         = buildVersion
+                            context.imagePullPolicy  = 'IfNotPresent'
+                            context.releaseName      = appName
+                            context.chartDirectory   = helmChartDirectory
+
+                            // run install
+                            modules.helm.install(context)
+                        }
                     }
 
                 }

@@ -1,10 +1,10 @@
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: {{ include "sample-dotnet-app.name" . }}
+  name: {{ include "app.name" . }}
   labels:
-    app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
-    helm.sh/chart: {{ include "sample-dotnet-app.chart" . }}
+    app.kubernetes.io/name: {{ include "app.name" . }}
+    helm.sh/chart: {{ include "app.chart" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
@@ -14,5 +14,5 @@ spec:
       paths:
       - path: /
         backend:
-          serviceName: {{ include "sample-dotnet-app.name" . }}
+          serviceName: {{ include "app.name" . }}
           servicePort: {{ .Values.service.port }}

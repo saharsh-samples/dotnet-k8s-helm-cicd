@@ -16,7 +16,6 @@ pipeline {
         string(name: 'sourceRegistry', defaultValue: 'docker.io/saharshsingh', description: 'Registry where image will be pused for long term storage')
 
         // Cluster Properties
-        string(name: 'k8sClusterUrl', defaultValue: 'https://192.168.99.100:8443', description: 'Target cluster for all deployments')
         string(name: 'productionNamespace', defaultValue: 'sample-projects', description: 'Production namespace. Appended with -dev and -qa for those environments')
         string(name: 'tillerNS', defaultValue: 'tiller', description: 'Namespace on K8S cluster where tiller server is installed')
         string(name: 'devIngressHost', defaultValue: 'dotnet-k8s-helm-sample-sample-projects-dev.192.168.99.100.nip.io', description:'Ingress Host to set when deploying in Dev environment.')
@@ -26,7 +25,9 @@ pipeline {
         // Jenkins Properties
         string(name: 'k8sCloudForDynamicSlaves', defaultValue: 'openshift', description: 'Cloud name for Kubernetes cluster where Jenkins slave pods will be spawned')
         string(name: 'imageRegistryCredentialId', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
-        string(name: 'k8sTokenCredentialId', defaultValue: 'k8s-cluster-auth-token', description: 'ID of Jenkins credential containing Kubernetes Cluster authentication token for Helm deploys')
+        string(name: 'devClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing Development Cluster authentication for Helm deploys')
+        string(name: 'qaClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing QA Cluster authentication for Helm deploys')
+        string(name: 'prodClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing Production Cluster authentication for Helm deploys')
         string(name: 'gitCredentialId', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
         string(name: 'confirmationTimeoutValue', defaultValue: '5', description: 'Integer indicating length of time to wait for manual confirmation')
         string(name: 'confirmationTimeoutUnits', defaultValue: 'DAYS', description: 'Time unit to use for CONFIRMATION_WAIT_VALUE')
@@ -46,7 +47,6 @@ pipeline {
         imageRepo          = "${sourceRegistry + '/' + appName}"
 
         // Cluster Properties
-        k8sClusterUrl        = "${k8sClusterUrl}"
         tillerNS             = "${tillerNS}"
         productionNamespace  = "${productionNamespace}"
         qaNamespace          = "${productionNamespace + '-qa'}"
@@ -56,12 +56,14 @@ pipeline {
         devIngressHost       = "${devIngressHost}"
 
         // Jenkins Properties
-        k8sCloudForDynamicSlaves  = "${k8sCloudForDynamicSlaves}"
-        imageRegistryCredentialId = "${imageRegistryCredentialId}"
-        k8sTokenCredentialId      = "${k8sTokenCredentialId}"
-        gitCredentialId           = "${gitCredentialId}"
-        confirmationTimeoutValue  = "${confirmationTimeoutValue}"
-        confirmationTimeoutUnits  = "${confirmationTimeoutUnits}"
+        k8sCloudForDynamicSlaves    = "${k8sCloudForDynamicSlaves}"
+        imageRegistryCredentialId   = "${imageRegistryCredentialId}"
+        devClusterAuthCredentialId  = "${prodClusterAuthCredentialId}"
+        qaClusterAuthCredentialId   = "${prodClusterAuthCredentialId}"
+        prodClusterAuthCredentialId = "${prodClusterAuthCredentialId}"
+        gitCredentialId             = "${gitCredentialId}"
+        confirmationTimeoutValue    = "${confirmationTimeoutValue}"
+        confirmationTimeoutUnits    = "${confirmationTimeoutUnits}"
 
         // Git Properties
         mainBranch    = "${mainBranch}"
@@ -89,35 +91,17 @@ pipeline {
                 script {
 
                     // load modules
-                    modules.helm = load '.jenkins/groovy/helm.groovy'
+                    modules.helm   = load '.jenkins/groovy/helm.groovy'
+                    modules.common = load '.jenkins/groovy/commonutils.groovy'
 
                     // Read Pod templates for dynamic slaves from files
                     env.buildahAgentYaml = readFile '.jenkins/agents/buildah-agent.yml'
                     env.helmAgentYaml    = readFile '.jenkins/agents/helm-agent.yml'
 
-                    // Read Helm Chart file line by line
-                    readFile(helmChartFile).split('\r|\n').each({ line ->
-
-                        // Look for line that starts with 'appVersion'
-                        if(line.trim().startsWith("appVersion")) {
-
-                            // Strip out everything on the line except the semantic version (i.e. #.#.#)
-                            def version = line.replaceFirst(".*appVersion.*(\\d+\\.\\d+\\.\\d+).*", "\$1")
-
-                            // If not on release branch, append branch name to semantic version
-                            if(! releaseBranch.equals(BRANCH_NAME)) {
-                                version = version + '-' + BRANCH_NAME
-                                // feature branches may have the 'feature/branch-name' structure
-                                // replace any '/' with '-' to keep version useable as image tag
-                                version = version.replace('/', '-')
-                            }
-
-                            // Set version information to build environment
-                            env.buildVersion         = version
-                            // Set version + "git commit hash" information to environment
-                            env.buildVersionWithHash = version + '-' + sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                        }
-                    })
+                    // Set version information to build environment
+                    env.buildVersion         = modules.common.getVersionFromHelmChart(helmChartFile, releaseBranch)
+                    // Set version + "git commit hash" information to environment
+                    env.buildVersionWithHash = env.buildVersion + '-' + sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                 }
             }
         }
@@ -182,31 +166,10 @@ pipeline {
             agent any
 
             steps {
-                withCredentials([usernamePassword(credentialsId: gitCredentialId, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh '''
-
-                    # Configure Git for tagging/committing and pushing
-                    ORIGIN=$(echo "$(git config remote.origin.url)" | sed -E "s~(http[s]*://)~\\1${USER}@~")
-                    git config --global user.email "jenkins@email.com"
-                    git config --global user.name "Jenkins"
-                    printf "exec echo \\"${PASS}\\"" > $HOME/askgitpass.sh
-                    chmod a+x $HOME/askgitpass.sh
-
-                    # Tag Release Candidate
-                    TAG="v${buildVersion}"
-                    git tag -a "$TAG" -m "Release $TAG created and delivered"
-                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" "$TAG"
-
-                    # Increment version on main branch
-                    git checkout ${mainBranch}
-                    git reset --hard origin/${mainBranch}
-
-                    new_version="$(echo "${buildVersion}" | cut -d '.' -f 1,2).$(($(echo "${buildVersion}" | cut -d '.' -f 3) + 1))"
-                    sed -i -E s/"appVersion.*[0-9]+\\.[0-9]+\\.[0-9]+"/"appVersion: $new_version"/ ${helmChartFile}
-
-                    git commit -a -m "Updated version from ${buildVersion} to $new_version"
-                    GIT_ASKPASS=$HOME/askgitpass.sh git push "$ORIGIN" ${mainBranch}
-                    '''
+                withCredentials([usernamePassword(credentialsId: gitCredentialId, usernameVariable: 'gitUser', passwordVariable: 'gitPassword')]) {
+                    script {
+                        modules.common.tagCommitAndIncrementVersion(gitUser, gitPassword, mainBranch, buildVersion, helmChartFile)
+                    }
                 }
             }
 
@@ -240,6 +203,7 @@ pipeline {
                     script {
 
                         // by default use values for dev envrionment
+                        def clusterAuthId   = devClusterAuthCredentialId
                         def namespace       = developmentNamespace
                         def ingressHost     = devIngressHost
                         def releaseName     = appName + '-dev'
@@ -247,19 +211,20 @@ pipeline {
 
                         // if on release branch, override them for QA environment
                         if(releaseBranch.equals(BRANCH_NAME)) {
+                            clusterAuthId   = qaClusterAuthCredentialId
                             namespace       = qaNamespace
                             ingressHost     = qaIngressHost
                             releaseName     = appName + '-qa'
                             imagePullPolicy = 'IfNotPresent'
                         }
 
-                        withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
+                        withCredentials([usernamePassword(credentialsId: clusterAuthId, usernameVariable: 'clusterUrl', passwordVariable: 'token')]) {
                             script {
 
                                 // define Helm install context
                                 def context              = modules.helm.newInstallContext()
                                 context.tillerNS         = tillerNS
-                                context.k8sCluster       = k8sClusterUrl
+                                context.k8sCluster       = clusterUrl
                                 context.clusterAuthToken = token
                                 context.namespace        = namespace
                                 context.appVersion       = buildVersionWithHash
@@ -320,13 +285,13 @@ pipeline {
                 // Deploy to K8s using helm install
                 container('helm') {
 
-                    withCredentials([string(credentialsId: k8sTokenCredentialId, variable: 'token')]) {
+                    withCredentials([usernamePassword(credentialsId: prodClusterAuthCredentialId, usernameVariable: 'clusterUrl', passwordVariable: 'token')]) {
                         script {
 
                             // define context
                             def context              = modules.helm.newInstallContext()
                             context.tillerNS         = tillerNS
-                            context.k8sCluster       = k8sClusterUrl
+                            context.k8sCluster       = clusterUrl
                             context.clusterAuthToken = token
                             context.namespace        = productionNamespace
                             context.appVersion       = buildVersionWithHash

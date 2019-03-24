@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "sample-dotnet-app.name" . }}
+  name: {{ include "app.name" . }}
   labels:
-    app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
-    helm.sh/chart: {{ include "sample-dotnet-app.chart" . }}
+    app.kubernetes.io/name: {{ include "app.name" . }}
+    helm.sh/chart: {{ include "app.chart" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
+      app.kubernetes.io/name: {{ include "app.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: {{ include "sample-dotnet-app.name" . }}
+        app.kubernetes.io/name: {{ include "app.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       containers:
@@ -45,7 +45,7 @@ spec:
       volumes:
         - name: app-config
           secret:
-            secretName: {{ include "sample-dotnet-app.name" . }}-config
+            secretName: {{ include "app.name" . }}-config
             items:
             - key: appusers.json
               path: appusers.json

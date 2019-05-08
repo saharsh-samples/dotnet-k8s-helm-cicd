@@ -36,7 +36,7 @@ Running `helm init` will initialize the Helm client using the current `kubectl` 
 
 Since Openshift has authentication and authorization built-in, simply running `helm init` won't work. Instead, for Openshift, install `tiller` server using the following commands.
 
-NOTE: Determine the version of Helm client by running `helm version`. Replace the `[helm-version]` below with the client version (e.g. `v2.12.3`).
+NOTE: Determine the version of Helm client by running `helm version`. Replace the `[helm-version]` below with the client version (e.g. `v2.13.1`).
 
         > helm init --client-only
         

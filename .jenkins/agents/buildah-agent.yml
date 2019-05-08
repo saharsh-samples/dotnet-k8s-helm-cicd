@@ -6,7 +6,7 @@ spec:
       - name: jnlp
         image: 'jenkinsci/jnlp-slave:alpine'
       - name: buildah
-        image: 'saharshsingh/container-management:1.0'
+        image: 'saharshsingh/container-management:1.0-30'
         imagePullPolicy: IfNotPresent
         command:
           - /bin/cat

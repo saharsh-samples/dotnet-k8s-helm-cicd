@@ -25,9 +25,9 @@ pipeline {
         // Jenkins Properties
         string(name: 'k8sCloudForDynamicSlaves', defaultValue: 'openshift', description: 'Cloud name for Kubernetes cluster where Jenkins slave pods will be spawned')
         string(name: 'imageRegistryCredentialId', defaultValue: 'image-registry-auth', description: 'ID of Jenkins credential containing container image registry username and password')
-        string(name: 'devClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing Development Cluster authentication for Helm deploys')
-        string(name: 'qaClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing QA Cluster authentication for Helm deploys')
-        string(name: 'prodClusterAuthCredentialId', defaultValue: 'ocp-cluster-auth', description: 'ID of Jenkins credential containing Production Cluster authentication for Helm deploys')
+        string(name: 'devClusterAuthCredentialId', defaultValue: 'k8s-cluster-auth', description: 'ID of Jenkins credential containing Development Cluster authentication for Helm deploys')
+        string(name: 'qaClusterAuthCredentialId', defaultValue: 'k8s-cluster-auth', description: 'ID of Jenkins credential containing QA Cluster authentication for Helm deploys')
+        string(name: 'prodClusterAuthCredentialId', defaultValue: 'k8s-cluster-auth', description: 'ID of Jenkins credential containing Production Cluster authentication for Helm deploys')
         string(name: 'gitCredentialId', defaultValue: 'git-auth', description: 'ID of Jenkins credential containing Git server username and password')
         string(name: 'confirmationTimeoutValue', defaultValue: '5', description: 'Integer indicating length of time to wait for manual confirmation')
         string(name: 'confirmationTimeoutUnits', defaultValue: 'DAYS', description: 'Time unit to use for CONFIRMATION_WAIT_VALUE')

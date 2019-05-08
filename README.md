@@ -43,15 +43,15 @@ Following sections describe each stage of the CI/CD pipeline and indicate the br
 
 **Run for:** All branches
 
-The intention of this stage is to do any initialization that modifies the pipeline environment before running any of the other stages. As of now, only such initialization needed is determining the build version. The build version is largely based on the version stored in the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file. For `master` branch, the build version is exactly that. For other branches, the build version is determined by appending a '-' followed by the name of the branch (e.g. 1.0.0-develop or 2.3.5-some-feature-request).
+The intention of this stage is to do any initialization that modifies the pipeline environment before running any of the other stages. Currently, this includes the following:
 
-The build version is used in following places:
+* Load shared Groovy modules - These are reusable functions written in Groovy that encapsulate high level tasks related to a specific tool or concern. They are organized in files, and each file contains one or more functions that belong to the same grouping (e.g. Helm related tasks). Each file is loaded as a namespace and bound to an appropriately named field in the `modules` global variable.
 
-* Image tag for the container image shipped to the image registry. This image tag is also supplied to Helm install command so that Kubernetes pulls the right image for deployment.
+* Load Kubernetes pod templates - These are YAML files describing the pod used to run certain stages in the pipeline. For example, deployment stages are run with the [`helm-agent`](.jenkins/agents/helm-agent.yml) pod template. These templates are stored in external files to reduce clutter from the main `Jenkinsfile`. They are loaded in this stage and bound to environment variables so they can be used by later stages.
 
-* If on the `master` branch, then the build version is applied as the Git tag on the commit being built by the pipeline.
-
-* Injected into the `sample-dotnet-app` instance itself as the `APP_VERSION` environment variable. This value is echoed back by the app in the `/info` endpoint. 
+* Set necessary environment variables - Following environment variables are set so they can be used by later stages.
+    * **buildVersion** - The build version is largely based on the version stored in the [`Chart.yaml`](deployment/helm-k8s/Chart.yaml) file. For `master` branch, the build version is exactly that. For other branches, the build version is determined by appending a '-' followed by the name of the branch (e.g. 1.0.0-develop or 2.3.5-some-feature-request).
+    * **buildVersionWithHash** - This is a combination of `buildVersion` and the short git commit hash. It is injected into the `sample-dotnet-app` instance itself as the `APP_VERSION` environment variable. This value is echoed back by the app in the `/info` endpoint.
 
 #### Build and Deliver Container Image
 
@@ -59,17 +59,11 @@ The build version is used in following places:
 
 This is the build stage. The build stage is divided into two sections:
 
-* Build .NET binaries (typically this should also include running automated tests and other code analysis checks)
+* Build .NET binaries (typically this should also include running automated tests and other code analysis checks) using the multi stage [`Dockerfile`](sample-dotnet-app/Dockerfile)
 
 * Build the deployable container image. If the branch is `master` or `develop`, deliver the container image to the image registry for long term storage.
 
-This stage is run using the following builder images spawned as pods in the Kuberenetes cloud configured in Jenkins.
-
-* `jenkinsci/jnlp-slave:alpine`: The default Jenkins JNLP slave agent image.
-
-* `microsoft/dotnet:2.2-sdk`: The standard .NET image provided by Microsoft used to build .NET binaries.
-
-* `saharshsingh/container-management:1.0`: Custom CICD image that contains the [`buildah`](https://github.com/containers/buildah) tool. The `buildah` tool is used to build the application container image using the [`Dockerfile`](sample-dotnet-app/Dockerfile) found in this repo.
+This stage is run using the [`buildah-agent`](.jenkins/agents/buildah-agent.yml) which contains the [`buildah`](https://github.com/containers/buildah) tool.
 
 NOTE: The `buildah` container needs to run as priveleged to execute successfully.
 
@@ -97,11 +91,7 @@ Since the version in `Chart.yaml` may not change for multiple deploys off `devel
 
 On the other hand, since the version will always be incremented for subsequent builds on the `master` branch, a pull policy of `IfNotPresent` is used for deployments off the `master` branch. This also falls in line with the "Build once and Promote" best practice for CI/CD pipelines. This way, the release candidate is built once, deployed to the "QA" environment, and then promoted to the production environment if deemed acceptable.
 
-This stage is run using the following builder images spawned as pods in the Kuberenetes cloud configured in Jenkins.
-
-* `jenkinsci/jnlp-slave:alpine`: The default Jenkins JNLP slave agent image.
-
-* `saharshsingh/saharshsingh/helm:2.12.3`: Custom CICD image that contains [`helm`](https://docs.helm.sh/) and [`kubectl`](https://kubernetes.io/docs/reference/kubectl/kubectl/) tools. These tools are used to deploy the application to the target Kubernetes cluster.
+This stage is run using the [`helm-agent`](.jenkins/agents/helm-agent.yml) which contains the [Kubernetes](https://kubernetes.io/docs/reference/kubectl/overview/) and [Helm](https://github.com/helm/helm/releases/tag/v2.13.1) CLI clients.
 
 #### Confirm Promotion to Production
 
@@ -117,11 +107,7 @@ This stage is run using `agent any` as no specific Kubernetes pods need to be sp
 
 This is the final stage of the pipeline and only run for the `master` branch. Application versions that pass testing and verfication in the "QA" environment are deployed to the "Production" environment. The deployment is done in the same manner as it is done in the "Deploy to Staging" stage above.
 
-This stage is run using the following builder images spawned as pods in the Kuberenetes cloud configured in Jenkins.
-
-* `jenkinsci/jnlp-slave:alpine`: The default Jenkins JNLP slave agent image.
-
-* `saharshsingh/saharshsingh/helm:2.12.3`: Custom CICD image that contains [`helm`](https://docs.helm.sh/) and [`kubectl`](https://kubernetes.io/docs/reference/kubectl/kubectl/) tools. These tools are used to deploy the application to the target Kubernetes cluster.
+This stage is run using the [`helm-agent`](.jenkins/agents/helm-agent.yml) which contains the [Kubernetes](https://kubernetes.io/docs/reference/kubectl/overview/) and [Helm](https://github.com/helm/helm/releases/tag/v2.13.1) CLI clients.
 
 ### Pipeline Setup
 
@@ -141,9 +127,9 @@ Following dependencies must be met before being able to start using the pipeline
 
 1. The `sample-projects`, `sample-projects-qa`, and `sample-projects-dev` namespaces created in Kubernetes with `tiller` having the ability to manage projects inside them.
 
-1. Jenkins `text` credential named `k8s-cluster-auth-token` that contains the token for the service account that will be used to connect to the target Kubernetes cluster. This service account needs to have `edit` privileges in the `tiller` namespace.
+1. Jenkins `username and password` credential named `k8s-cluster-auth` that contains the target Kubernetes cluster URL and authentication token for the service account that will be used to connect to the cluster. This service account needs to have `edit` privileges in the `tiller` namespace.
 
-1. Jenkins having the ability to run privileged containers so that the `buildah` container instance can run.
+1. The namespace where Jenkins is deployed should have a `jenkins-privileged` service account that has the ability to run privileged containers. This is needed so that the `buildah` container instance can run as privileged.
 
 #### Pipeline setup on Minishift
 
@@ -151,20 +137,22 @@ Following set of instructions is an example of how to achieve the above setup in
 
 1. Install the Jenkins (ephemeral) service from the provided catalog under `jenkins` namespace.
 
-1. Give the `jenkins` service account ability to run privileged containers.
+1. Create a `jenkins-privileged` service account and grant it the ability to run privileged containers. Run the following as a user with cluster admin access.
 
         oc login -u system:admin
-        oc adm policy add-scc-to-user privileged -n jenkins -z jenkins
+        oc create sa jenkins-privileged -n jenkins
+        oc adm policy add-scc-to-user privileged -n jenkins -z jenkins-privileged
+        oc login -u developer
 
 1. Install the `tiller` server in Minishift under the `tiller` namespace. See [deployment/helm-k8s/README.md](deployment/helm-k8s/README.md) for instructions.
 
-1. Give the `jenkins` service account `edit` privileges in `tiller` namespace.
+1. Give the `tiller` service account `edit` privileges in `tiller` namespace.
 
-        oc policy add-role-to-user edit "system:serviceaccount:jenkins:jenkins" -n tiller
+        oc policy add-role-to-user edit -z tiller -n tiller
 
-1. Get the service token for `jenkins` service account.
+1. Get the service token for `tiller` service account.
 
-        oc serviceaccounts get-token jenkins -n jenkins
+        oc serviceaccounts get-token tiller -n tiller
 
 1. In Jenkins, create the following three credentials:
 
@@ -172,7 +160,7 @@ Following set of instructions is an example of how to achieve the above setup in
 
     * `image-registry-auth` : A `username and password` credential containing the username and password for the image registry where the `sample-dotnet-app` container image will be pushed.
 
-    * `k8s-cluster-auth-token` : A `text` credential containing the Jenkins service account login token retrieved in previous step.
+    * `k8s-cluster-auth` : A `username and password` credential containing the Kubernetes cluster URL and `tiller` service account login token retrieved in previous step.
 
 1. Create the `dev`, `qa`, and `production` namespaces and give the `tiller` service account `edit` privileges.
 

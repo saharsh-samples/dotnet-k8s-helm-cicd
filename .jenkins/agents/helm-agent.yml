@@ -5,7 +5,7 @@ spec:
       - name: jnlp
         image: 'jenkinsci/jnlp-slave:alpine'
       - name: helm
-        image: 'saharshsingh/helm:2.12.3'
+        image: 'saharshsingh/helm:2.13.1'
         imagePullPolicy: IfNotPresent
         command:
           - /bin/cat

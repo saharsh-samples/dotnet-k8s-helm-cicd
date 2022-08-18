@@ -29,13 +29,13 @@ namespace sample_dotnet_app
         public void ConfigureServices(IServiceCollection services)
         {
 
-            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_2);
+            services.AddControllers().SetCompatibilityVersion(CompatibilityVersion.Version_3_0);
             services.Configure<List<AppUser>>(Configuration.GetSection("AppUsers"));
             services.AddSingleton<BasicAuthenticationFilter>();
 
             var appMetadata = new AppMetadata {
                 Name = Configuration.GetValue<string>("APP_NAME", "sample-dotnet-app"),
-                Description = Configuration.GetValue<string>("APP_DESCRIPTION", "A sample ASP.NET 2.2 Web API application"),
+                Description = Configuration.GetValue<string>("APP_DESCRIPTION", "A sample ASP.NET 3.1 Web API application"),
                 Version = Configuration.GetValue<string>("APP_VERSION", "set APP_VERSION in env to override")
             };
             services.AddSingleton(appMetadata);
@@ -51,10 +51,14 @@ namespace sample_dotnet_app
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            app.UseRouting();
             app.UseHealthChecks("/health");
-            app.UseMvc();
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
+            });
         }
     }
 }

@@ -2,7 +2,7 @@
 
 ## Description
 
-This is a very basic ASP.NET 2.2 WebAPI project. It creates an example RESTful API with the following endpoints:
+This is a very basic ASP.NET 3.1 WebAPI project. It creates an example RESTful API with the following endpoints:
 
 - `GET /api/values`
 - `POST /api/values` (accepts a JSON string in request body)

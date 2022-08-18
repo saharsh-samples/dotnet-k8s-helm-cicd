@@ -1,11 +1,11 @@
-FROM microsoft/dotnet:2.2-sdk AS build
+FROM mcr.microsoft.com/dotnet/sdk:3.1 AS build
 
 COPY . /build
 WORKDIR /build
 
 RUN dotnet publish -c Release -o out
 
-FROM microsoft/dotnet:2.2-aspnetcore-runtime
+FROM mcr.microsoft.com/dotnet/aspnet:3.1
 
 WORKDIR /app
 COPY --from=build /build/out .

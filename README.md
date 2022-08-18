@@ -1,10 +1,10 @@
 # .NET + Kubernetes + Helm Reference Project
 
-This project is intended as a reference project for containerized .NET applications deployed to Kubernetes using CI/CD pipelines. The project contains a fully functional ASP.NET 2.2 WebAPI web service, Kuberetes templates and helm charts needed to deploy the application, and a Jenkinsfile that can be used to stand up a CI/CD pipeline for the project.
+This project is intended as a reference project for containerized .NET applications deployed to Kubernetes using CI/CD pipelines. The project contains a fully functional ASP.NET 3.1 WebAPI web service, Kuberetes templates and helm charts needed to deploy the application, and a Jenkinsfile that can be used to stand up a CI/CD pipeline for the project.
 
 ## Sample .NET Application
 
-The sample application is a very basic ASP.NET 2.2 WebAPI project. Details regarding the application itself are contained in the [sample-dotnet-app](sample-dotnet-app) subdirectory.
+The sample application is a very basic ASP.NET 3.1 WebAPI project. Details regarding the application itself are contained in the [sample-dotnet-app](sample-dotnet-app) subdirectory.
 
 ## Kubernetes Deployment
 

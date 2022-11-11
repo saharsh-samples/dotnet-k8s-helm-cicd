@@ -28,7 +28,7 @@ The intention here is provide a simple APS.NET web service that can be container
 
 Once built, the container can be started using a command like below.
 
-        docker run -d -p 8080:80 \
+        docker run -d -p 8080:8080 \
                 -v $PWD/config/appusers.json:/app/config/appusers.json \
                 -e VALUES_SERVICE_TYPE="simple" \
                 --name sample-dotnet-app sample-dotnet-app

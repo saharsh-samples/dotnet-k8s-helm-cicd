@@ -10,7 +10,7 @@ namespace sample_dotnet_app.Services {
         bool Update(long id, string newValue);
         bool Delete(long id);
         bool Retrieve(long id, out object retrieved);
-        object RetrieveAll();
+        List<object> RetrieveAll();
     }
 
     public class SimpleValuesService : IValuesService {
@@ -42,8 +42,12 @@ namespace sample_dotnet_app.Services {
             return success;
         }
 
-        public object RetrieveAll() {
-            return values;
+        public List<object> RetrieveAll() {
+            var asList = new List<object>();
+            foreach( var entry in values ) {
+                asList.Add(entry.Value);
+            }
+            return asList;
         }
     }
 
@@ -84,8 +88,12 @@ namespace sample_dotnet_app.Services {
             return success;
         }
 
-        public object RetrieveAll() {
-            return values;
+        public List<object> RetrieveAll() {
+            var asList = new List<object>();
+            foreach( var entry in values ) {
+                asList.Add(entry.Value);
+            }
+            return asList;
         }
     }
 }
